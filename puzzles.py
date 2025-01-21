@@ -398,12 +398,34 @@ def mul_relu_block_back_spec(
 
 @triton.jit
 def mul_relu_block_back_kernel(
-    x_ptr, y_ptr, dz_ptr, dx_ptr, N0, N1, B0: tl.constexpr, B1: tl.constexpr
+        x_ptr, y_ptr, dz_ptr, dx_ptr, N0, N1, B0: tl.constexpr, B1: tl.constexpr
 ):
     block_id_i = tl.program_id(0)
     block_id_j = tl.program_id(1)
-    # Finish me!
-    return
+
+    # x is no longer a vector.
+    i_range = tl.arange(0, B0)[None, :] + block_id_i * B0
+    j_range = tl.arange(0, B1)[:, None] + block_id_j * B1
+    ji_range = j_range * N0 + i_range
+
+    mask_i = i_range < N0
+    mask_j = j_range < N1
+    mask_ji = mask_i & mask_j
+
+    # Load x, y, dz
+    x = tl.load(x_ptr + ji_range, mask=mask_ji)
+    y = tl.load(y_ptr + j_range, mask=mask_j)
+    dz = tl.load(dz_ptr + ji_range, mask=mask_ji)
+
+    # Apply ReLU derivative and calculate dx
+    df = tl.where(x * y > 0, 1.0, 0.0)
+    yj = y
+    dx = df * yj * dz  # This will now have the same shape as dz
+
+    # Store dx, ensuring the mask is applied correctly
+    # tl.store(dx_ptr + ji_range, dx, mask=mask_ji)
+    tl.store(dx_ptr + ji_range, dx, mask=mask_ji)
+
 
 
 r"""
