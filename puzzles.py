@@ -450,6 +450,24 @@ def sum_spec(x: Float32[4, 200]) -> Float32[4,]:
 @triton.jit
 def sum_kernel(x_ptr, z_ptr, N0, N1, T, B0: tl.constexpr, B1: tl.constexpr):
     # Finish me!
+    pid = tl.program_id(0)
+
+    off_i = tl.arange(0, B0) + pid * B0
+    mask_i = off_i < N0
+
+    z = tl.zeros([B0], dtype=tl.float32)
+
+    for id_j in tl.range(0, T, B1):
+        off_j = tl.arange(0, B1)[None, :] + id_j
+        off_ij = off_i * T + off_j
+
+        mask_j = off_j < T
+        mask_ij = mask_i & mask_j
+
+        x = tl.load(x_ptr + off_ij, mask=mask_ij)
+        z += tl.sum(x, axis=1)
+
+    tl.store(z_ptr + off_i, z, mask=mask_i)
     return
 
 
